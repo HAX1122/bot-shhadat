@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: saudi-tech-certs-bot
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        value: 8693907736:AAG3TOa5omrUHAPqOUjTC6W_lK6aT1Ycp1c
+      - key: TELEGRAM_CHANNEL_ID
+        value: ""
+      - key: PORT
+        value: 8080
+      - key: SCAN_INTERVAL_MINUTES
+        value: 60

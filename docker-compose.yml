@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  certs-radar-bot:
+    build: .
+    container_name: saudi_tech_certs_bot
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - TELEGRAM_BOT_TOKEN=8693907736:AAG3TOa5omrUHAPqOUjTC6W_lK6aT1Ycp1c
+      - TELEGRAM_CHANNEL_ID=
+      - PORT=8080
+      - SCAN_INTERVAL_MINUTES=60
+    volumes:
+      - certs_data:/app/data
+
+volumes:
+  certs_data:
