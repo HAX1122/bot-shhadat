@@ -94,8 +94,8 @@ def build_card_buttons(opp: dict) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def build_list_buttons(category: str, page: int, total_pages: int, opp_id: int) -> InlineKeyboardMarkup:
-    """إنشاء أزرار التصفح والانتقال بين الفرص"""
+def build_list_buttons(category: str, page: int, total_pages: int, opp: dict) -> InlineKeyboardMarkup:
+    """إنشاء أزرار التصفح والانتقال المباشر بين الفرص مع رابط التقديم الفوري"""
     row_nav = []
     if page > 1:
         row_nav.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"nav_{category}_{page - 1}"))
@@ -104,9 +104,12 @@ def build_list_buttons(category: str, page: int, total_pages: int, opp_id: int) 
         row_nav.append(InlineKeyboardButton("التالي ➡️", callback_data=f"nav_{category}_{page + 1}"))
         
     keyboard = [
+        [InlineKeyboardButton("🔗 التقديم والتسجيل المباشر في المنصة الرسمية", url=opp["url"])],
         row_nav,
-        [InlineKeyboardButton("🔗 رابط التسجيل المباشر", callback_data=f"open_url_{opp_id}")],
-        [InlineKeyboardButton("🔙 رجوع للتصنيفات", callback_data="categories_menu")]
+        [
+            InlineKeyboardButton("📢 مشاركة الشهادة", switch_inline_query=opp["title"]),
+            InlineKeyboardButton("🔙 رجوع للتصنيفات", callback_data="categories_menu")
+        ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -129,19 +132,27 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👇 اختر مساراً للتصفح الآن أو استخدم الأزرار بالأسفل:"
     )
     
+    stats = database.get_stats()
+    cats = stats.get("categories", {})
+    ai_count = cats.get("ai", 0)
+    data_count = cats.get("data", 0)
+    cs_count = cats.get("cs", 0)
+    cyber_count = cats.get("cyber", 0)
+    total_count = stats.get("total_opportunities", 0)
+    
     inline_kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚀 استعراض أحدث الفرص المتاحة", callback_data="nav_all_1")],
+        [InlineKeyboardButton(f"🚀 استعراض كافة الشهادات المعتمدة ({total_count})", callback_data="nav_all_1")],
         [
-            InlineKeyboardButton("🤖 الذكاء الاصطناعي", callback_data="nav_ai_1"),
-            InlineKeyboardButton("📊 علم البيانات", callback_data="nav_data_1")
+            InlineKeyboardButton(f"🤖 الذكاء الاصطناعي ({ai_count})", callback_data="nav_ai_1"),
+            InlineKeyboardButton(f"📊 علم البيانات ({data_count})", callback_data="nav_data_1")
         ],
         [
-            InlineKeyboardButton("💻 علوم الحاسب", callback_data="nav_cs_1"),
-            InlineKeyboardButton("🛡️ الأمن السيبراني", callback_data="nav_cyber_1")
+            InlineKeyboardButton(f"💻 علوم الحاسب ({cs_count})", callback_data="nav_cs_1"),
+            InlineKeyboardButton(f"🛡️ الأمن السيبراني ({cyber_count})", callback_data="nav_cyber_1")
         ],
         [
-            InlineKeyboardButton("🔍 بحث مخصص", callback_data="ask_search"),
-            InlineKeyboardButton("🔄 فحص وتحديث فوري", callback_data="check_now")
+            InlineKeyboardButton("🔍 بحث مخصص بالكلمات", callback_data="ask_search"),
+            InlineKeyboardButton("🔄 فحص فوري للمنصات", callback_data="check_now")
         ]
     ])
     
@@ -151,17 +162,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
     await update.message.reply_text(
-        "🗂️ <b>لوحة التصفح السريع:</b>",
+        "🗂️ <b>لوحة التصفح السريع للمسارات:</b>",
         reply_markup=inline_kb,
         parse_mode=ParseMode.HTML
     )
 
 async def show_opportunity_page(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str, page: int):
-    """عرض صفحة لفرصة محددة مع أزرار التنقل"""
+    """عرض صفحة لفرصة محددة مع أزرار التنقل ورابط التقديم المباشر"""
     query = update.callback_query
     total_count = database.get_total_opportunities_count(category)
     if total_count == 0:
-        msg = "⚠️ لا توجد فرص مسجلة حالياً في هذا المسار. جاري الرصد المستمر..."
+        msg = "⚠️ لا توجد شهادات مسجلة حالياً في هذا المسار. جاري الرصد المستمر..."
         if query:
             await query.answer()
             await query.edit_message_text(msg)
@@ -176,7 +187,7 @@ async def show_opportunity_page(update: Update, context: ContextTypes.DEFAULT_TY
         
     opp = dict(opps[0])
     text = format_opportunity_card(opp)
-    reply_markup = build_list_buttons(category, page, total_count, opp["id"])
+    reply_markup = build_list_buttons(category, page, total_count, opp)
     
     if query:
         await query.answer()
