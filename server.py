@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sys
+from telegram import Update
 
 from bot import build_application, background_monitoring_task
 import config
@@ -66,7 +67,7 @@ async def main():
     app = build_application()
     await app.initialize()
     await app.start()
-    await app.updater.start_polling(drop_pending_updates=True)
+    await app.updater.start_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
     logger.info("Telegram Bot polling started successfully!")
     
     # تشغيل مهمة الرصد الدوري الخلفية

@@ -55,6 +55,17 @@ def init_db():
                 FOREIGN KEY (opportunity_id) REFERENCES opportunities(id)
             )
         """)
+        
+        # جدول القنوات والقروبات المسجلة للبث التلقائي
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS channels (
+                channel_id TEXT PRIMARY KEY,
+                title TEXT,
+                username TEXT,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active INTEGER DEFAULT 1
+            )
+        """)
         conn.commit()
 
 # تهيئة الجداول تلقائياً عند استيراد الوحدة
@@ -218,3 +229,32 @@ def get_stats():
             "active_subscribers": total_subs,
             "categories": cats
         }
+
+def add_channel(channel_id: str, title: str = "", username: str = "") -> bool:
+    """تسجيل قناة أو مجموعة للبث التلقائي"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO channels (channel_id, title, username, is_active)
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT(channel_id) DO UPDATE SET
+                title = excluded.title,
+                username = excluded.username,
+                is_active = 1
+        """, (str(channel_id), title, username))
+        conn.commit()
+        return True
+
+def remove_channel(channel_id: str):
+    """إلغاء تفعيل القناة عند مغادرة البوت أو إزالة الصلاحيات"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE channels SET is_active = 0 WHERE channel_id = ?", (str(channel_id),))
+        conn.commit()
+
+def get_active_channels():
+    """جلب جميع القنوات النشطة للبث التلقائي"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT channel_id, title, username FROM channels WHERE is_active = 1")
+        return cursor.fetchall()

@@ -15,6 +15,7 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
+    ChatMemberHandler,
     ContextTypes,
     filters
 )
@@ -31,7 +32,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# لوحة المفاتيح الرئيسية في الدردشة
+# لوحة المفاتيح الرئيسية في الدردشة الخاصة
 MAIN_REPLY_KEYBOARD = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🚀 أحدث الفرص والشهادات"), KeyboardButton("🔍 بحث مخصص")],
@@ -86,7 +87,7 @@ def format_opportunity_card(opp: dict, is_broadcast: bool = False) -> str:
 def build_card_buttons(opp: dict) -> InlineKeyboardMarkup:
     """إنشاء أزرار التسجيل والمشاركة للفرصة"""
     keyboard = [
-        [InlineKeyboardButton("🔗 التقديم والتسجيل في المنصة الرسمية", url=opp["url"])],
+        [InlineKeyboardButton("🔗 التقديم والتسجيل المباشر في المنصة الرسمية", url=opp["url"])],
         [
             InlineKeyboardButton("📢 مشاركة الفرصة", switch_inline_query=opp["title"]),
             InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="menu_home")
@@ -115,11 +116,14 @@ def build_list_buttons(category: str, page: int, total_pages: int, opp: dict) ->
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """الترحيب بالمستخدم وتسجيله في قاعدة بيانات التنبيهات الفورية"""
+    if not update.effective_user or not update.message:
+        return
+        
     user = update.effective_user
     database.add_subscriber(user.id, user.username or "", user.first_name or "")
     
     welcome_text = (
-        f"أهلاً بك يا <b>{html.escape(user.first_name)}</b> في <b>رادار شهادات الخبرة والمعسكرات التقنية المجانية بالمملكة</b> 🇸🇦⚡\n\n"
+        f"أهلاً بك يا <b>{html.escape(user.first_name or 'عزيزي')}</b> في <b>رادار شهادات الخبرة والمعسكرات التقنية المجانية بالمملكة</b> 🇸🇦⚡\n\n"
         f"🎯 <b>وظيفة هذا البوت:</b>\n"
         f"يرصد لك على مدار الساعة (24/7) أي <b>شهادة خبرة مجانية أو معسكر تدريبي أو فرصة تدريب على رأس العمل</b> في:\n"
         f"• 🤖 الذكاء الاصطناعي (AI & Machine Learning)\n"
@@ -176,7 +180,7 @@ async def show_opportunity_page(update: Update, context: ContextTypes.DEFAULT_TY
         if query:
             await query.answer()
             await query.edit_message_text(msg)
-        else:
+        elif update.effective_message:
             await update.effective_message.reply_text(msg)
         return
         
@@ -192,11 +196,10 @@ async def show_opportunity_page(update: Update, context: ContextTypes.DEFAULT_TY
     if query:
         await query.answer()
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML, disable_web_page_preview=False)
-    else:
+    elif update.effective_message:
         await update.effective_message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML, disable_web_page_preview=False)
 
 async def cmd_latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض أحدث الفرص المتاحة لجميع المسارات"""
     await show_opportunity_page(update, context, "all", 1)
 
 async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -213,30 +216,34 @@ async def cmd_cyber(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض إحصائيات الفرص والمشتركين"""
+    if not update.effective_message:
+        return
     stats = database.get_stats()
     cats = stats["categories"]
+    channels_count = len(database.get_active_channels())
     text = (
         f"📊 <b>إحصائيات رادار الشهادات والفرص التقنية</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🎯 <b>إجمالي الفرص والشهادات المرصودة:</b> {stats['total_opportunities']} فرصة\n"
-        f"👥 <b>عدد المشتركين النشطين بالتنبيهات:</b> {stats['active_subscribers']} مشترك\n\n"
-        f"📂 <b>توزيع الفرص بحسب المسار:</b>\n"
-        f"• 🤖 الذكاء الاصطناعي (AI): {cats.get('ai', 0)} فرصة\n"
-        f"• 📊 علم وتحليل البيانات (Data): {cats.get('data', 0)} فرصة\n"
-        f"• 💻 علوم الحاسب والبرمجة (CS): {cats.get('cs', 0)} فرصة\n"
-        f"• 🛡️ الأمن والتقنيات السحابية: {cats.get('cyber', 0)} فرصة\n"
+        f"🎯 <b>إجمالي الشهادات المرصودة:</b> {stats['total_opportunities']} شهادة\n"
+        f"👥 <b>عدد المشتركين الأفراد:</b> {stats['active_subscribers']} مشترك\n"
+        f"📢 <b>القنوات المرتبطة بالبث:</b> {channels_count} قناة\n\n"
+        f"📂 <b>توزيع الشهادات بحسب المسار:</b>\n"
+        f"• 🤖 الذكاء الاصطناعي (AI): {cats.get('ai', 0)} شهادة\n"
+        f"• 📊 علم وتحليل البيانات (Data): {cats.get('data', 0)} شهادة\n"
+        f"• 💻 علوم الحاسب والبرمجة (CS): {cats.get('cs', 0)} شهادة\n"
+        f"• 🛡️ الأمن والتقنيات السحابية: {cats.get('cyber', 0)} شهادة\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"⏱️ الرصد يعمل آلياً كل 60 دقيقة من مصادر التدريب الوطنية المعتمدة."
+        f"⏱️ الرصد يعمل آلياً كل 60 دقيقة من المنصات التدريبية المعتمدة."
     )
     await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
 
 async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """التحكم بتفعيل أو إلغاء التنبيهات الفورية"""
+    if not update.effective_user or not update.effective_message:
+        return
     user_id = update.effective_user.id
     sub = database.get_subscriber(user_id)
     is_active = bool(sub["is_active"]) if sub else False
     
-    # تبديل الحالة
     new_state = not is_active
     database.set_subscriber_status(user_id, new_state)
     
@@ -249,24 +256,23 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
 
 async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إجراء فحص فوري للمصادر وتحديث قاعدة البيانات"""
-    msg = await update.effective_message.reply_text("🔄 جاري فحص جميع المنصات والمصادر الرسمية الآن... الرجاء الانتظار ثوانٍ معدودة.")
+    if not update.effective_message:
+        return
+    msg = await update.effective_message.reply_text("🔄 جاري فحص جميع المنصات التدريبية الرسمية الآن... الرجاء الانتظار ثوانٍ معدودة.")
     found = scraper.scan_sources()
     
     if found:
-        text = f"✅ <b>اكتمل الفحص!</b> تم العثور على <b>{len(found)}</b> فرصة وشهادة تدريبية جديدة وإضافتها للقاعدة بنجاح."
+        text = f"✅ <b>اكتمل الفحص!</b> تم العثور على <b>{len(found)}</b> شهادة تدريبية جديدة وإضافتها بنجاح."
     else:
-        text = "✅ <b>اكتمل الفحص!</b> جميع الفرص الحالية محدثة، ولم تصدر إعلانات جديدة غير مرصودة في الدقائق الأخيرة."
+        text = "✅ <b>اكتمل الفحص!</b> جميع الشهادات الحالية محدثة، وجاري المراقبة المستمرة لأي برامج جديدة."
         
     await msg.edit_text(text, parse_mode=ParseMode.HTML)
-    if found:
-        # عرض أول فرصة مكتشفة
-        card = format_opportunity_card(found[0])
-        kb = build_card_buttons(found[0])
-        await update.effective_message.reply_text(card, reply_markup=kb, parse_mode=ParseMode.HTML)
 
 async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """التعامل مع نصوص الأزرار النصية والبحث"""
+    """التعامل مع الرسائل النصية الخاصة بالمستخدم بأمان تام"""
+    if not update.message or not update.message.text:
+        return
+        
     text = update.message.text.strip()
     
     if text == "🚀 أحدث الفرص والشهادات":
@@ -296,25 +302,24 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
             f"• مجاني 100% ولا يتطلب أي رسوم.\n"
             f"• فحص دوري مستمر على مدار 24 ساعة.\n"
             f"• يرسل الرابط المباشر والمتطلبات الرسمية والجهة المنظمة.\n"
-            f"• إمكانية ربطه بالقنوات والقروبات للبث المباشر التلقائي.\n\n"
-            f"📢 <b>لربط البوت بقناتك:</b> أضف البوت مشرفاً (Admin) في قناتك وسيقوم بالنشر التلقائي فور رصد أي فرصة!"
+            f"• يتم ربطه تلقائياً بالقنوات بمجرد إضافته كأدمن!\n\n"
+            f"📢 <b>لربط البوت بقناتك:</b> أضف البوت مشرفاً (Admin) في قناتك وسيقوم بتأكيد الربط والنشر التلقائي فور رصد أي فرصة!"
         )
         await update.message.reply_text(about_text, parse_mode=ParseMode.HTML)
     elif context.user_data.get("waiting_for_search"):
         context.user_data["waiting_for_search"] = False
         results = database.search_opportunities(text, limit=5)
         if not results:
-            await update.message.reply_text(f"لم يتم العثور على نتائج تطابق: <b>{html.escape(text)}</b>.\nجرب كلمة أخرى مثل: ذكاء، سدايا، طويق، بايثون.", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(f"لم يتم العثور على شهادات تطابق: <b>{html.escape(text)}</b>.\nجرب كلمة أخرى مثل: ذكاء، سدايا، طويق، بايثون.", parse_mode=ParseMode.HTML)
             return
             
-        await update.message.reply_text(f"🔍 تم العثور على <b>{len(results)}</b> فرصة تطابق: <b>{html.escape(text)}</b>", parse_mode=ParseMode.HTML)
+        await update.message.reply_text(f"🔍 تم العثور على <b>{len(results)}</b> شهادة تطابق: <b>{html.escape(text)}</b>", parse_mode=ParseMode.HTML)
         for row in results:
             opp = dict(row)
             card = format_opportunity_card(opp)
             kb = build_card_buttons(opp)
             await update.message.reply_text(card, reply_markup=kb, parse_mode=ParseMode.HTML)
     else:
-        # بحث مباشر عن النص المرسل
         results = database.search_opportunities(text, limit=3)
         if results:
             await update.message.reply_text(f"🔎 نتائج البحث عن <b>{html.escape(text)}</b>:", parse_mode=ParseMode.HTML)
@@ -327,8 +332,11 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("الرجاء اختيار أحد المسارات من الأزرار أو كتابة كلمة مفتاحية للبحث.", reply_markup=MAIN_REPLY_KEYBOARD)
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة النقر على الأزرار الشفافة Inline Buttons"""
+    """معالجة النقر على الأزرار الشفافة Inline Buttons بأمان"""
     query = update.callback_query
+    if not query:
+        return
+        
     data = query.data
     
     if data == "ignore":
@@ -340,17 +348,6 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         category = parts[1]
         page = int(parts[2])
         await show_opportunity_page(update, context, category, page)
-        return
-        
-    if data.startswith("open_url_"):
-        opp_id = int(data.replace("open_url_", ""))
-        opp = database.get_opportunity_by_id(opp_id)
-        if opp:
-            await query.answer()
-            await query.message.reply_text(
-                f"🔗 <b>رابط التقديم الرسمي لـ {html.escape(opp['title'])}:</b>\n{opp['url']}",
-                parse_mode=ParseMode.HTML
-            )
         return
         
     if data == "ask_search":
@@ -381,27 +378,71 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text("📂 <b>اختر المسار التخصصي للتصفح:</b>", reply_markup=kb, parse_mode=ParseMode.HTML)
         return
 
+async def handle_channel_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة إضافة البوت كأدمن في قناة أو جروب وتسجيلها للبث التلقائي دون أي خطأ"""
+    try:
+        result = update.my_chat_member
+        if not result:
+            return
+            
+        chat = result.chat
+        new_status = result.new_chat_member.status
+        
+        if new_status in ["administrator", "member"]:
+            database.add_channel(str(chat.id), chat.title or "", chat.username or "")
+            logger.info(f"Bot successfully registered to channel/group: {chat.title} ({chat.id})")
+            welcome_post = (
+                "🎉 <b>تم تفعيل رادار شهادات الخبرة والمعسكرات التقنية بنجاح في هذه القناة!</b> 🇸🇦⚡\n\n"
+                "سيتم رصد ونشر أي شهادة خبرة مجانية أو معسكر تدريبي معتمد جديد في:\n"
+                "• 🤖 الذكاء الاصطناعي (AI)\n"
+                "• 📊 علم وتحليل البيانات (Data Science)\n"
+                "• 💻 علوم الحاسب وهندسة البرمجيات (CS)\n"
+                "• 🛡️ الأمن السيبراني والحوسبة السحابية (Cyber & Cloud)\n\n"
+                "تلقائياً وفور صدورها هنا مع رابط التسجيل والمتطلبات الرسمية."
+            )
+            try:
+                await context.bot.send_message(
+                    chat_id=chat.id,
+                    text=welcome_post,
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                logger.warning(f"Could not send welcome post to channel {chat.id}: {e}")
+        elif new_status in ["left", "kicked"]:
+            database.remove_channel(str(chat.id))
+            logger.info(f"Bot removed from channel: {chat.id}")
+    except Exception as e:
+        logger.error(f"Error handling channel member update: {e}")
+
+async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """صمام أمان عام: يمنع توقف البوت نهائياً عند أي خطأ غير متوقع"""
+    logger.error(f"Global error handler caught: {context.error}")
+
 async def broadcast_new_opportunity(bot, opp: dict):
-    """إرسال الفرصة الجديدة لكافة المشتركين والقناة المسجلة مع منع التكرار"""
+    """إرسال الفرصة الجديدة لكافة القنوات والمشتركين مع منع التكرار"""
     opp_id = opp["id"]
     text = format_opportunity_card(opp, is_broadcast=True)
     kb = build_card_buttons(opp)
     
-    # 1. الإرسال إلى القناة إن وجدت
+    # 1. إرسال إلى القنوات المسجلة تلقائياً في قاعدة البيانات
+    active_channels = database.get_active_channels()
+    target_channels = set(str(c["channel_id"]) for c in active_channels)
     if config.TELEGRAM_CHANNEL_ID:
-        channel_id = config.TELEGRAM_CHANNEL_ID.strip()
-        if not database.is_notification_sent(opp_id, channel_id):
+        target_channels.add(config.TELEGRAM_CHANNEL_ID.strip())
+        
+    for ch_id in target_channels:
+        if not database.is_notification_sent(opp_id, ch_id):
             try:
                 await bot.send_message(
-                    chat_id=channel_id,
+                    chat_id=ch_id,
                     text=text,
                     reply_markup=kb,
                     parse_mode=ParseMode.HTML
                 )
-                database.log_notification_sent(opp_id, channel_id)
-                logger.info(f"Broadcasted opp #{opp_id} to channel {channel_id}")
+                database.log_notification_sent(opp_id, ch_id)
+                logger.info(f"Broadcasted opp #{opp_id} to channel {ch_id}")
             except Exception as e:
-                logger.error(f"Failed to broadcast to channel {channel_id}: {e}")
+                logger.error(f"Failed to broadcast to channel {ch_id}: {e}")
                 
     # 2. الإرسال إلى المشتركين النشطين
     subscribers = database.get_active_subscribers()
@@ -416,7 +457,7 @@ async def broadcast_new_opportunity(bot, opp: dict):
                     parse_mode=ParseMode.HTML
                 )
                 database.log_notification_sent(opp_id, str(user_id))
-                await asyncio.sleep(0.05) # حماية من حدود التليجرام
+                await asyncio.sleep(0.05)
             except Exception as e:
                 logger.warning(f"Could not send notification to user {user_id}: {e}")
 
@@ -436,7 +477,6 @@ async def background_monitoring_task(bot):
         except Exception as e:
             logger.error(f"Error in background monitor task: {e}")
             
-        # الانتظار حتى الفحص القادم
         await asyncio.sleep(config.SCAN_INTERVAL_MINUTES * 60)
 
 def build_application() -> Application:
@@ -456,9 +496,15 @@ def build_application() -> Application:
     app.add_handler(CommandHandler("check", cmd_check))
     app.add_handler(CommandHandler("help", cmd_start))
     
-    # معالجات الأزرار والنصوص
+    # معالجة القنوات والمجموعات عند إضافة البوت كأدمن
+    app.add_handler(ChatMemberHandler(handle_channel_member_update, ChatMemberHandler.MY_CHAT_MEMBER))
+    
+    # معالجات الأزرار والنصوص (مقتصرة على المحادثات الخاصة لمنع أخطاء القنوات)
     app.add_handler(CallbackQueryHandler(handle_callback_query))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
+    app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE & ~filters.COMMAND, handle_text_messages))
+    
+    # صمام الأمان العام لمنع أي توقف
+    app.add_error_handler(global_error_handler)
     
     return app
 
@@ -468,10 +514,9 @@ async def run_bot_async():
     
     await app.initialize()
     await app.start()
-    await app.updater.start_polling(drop_pending_updates=True)
+    await app.updater.start_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
     logger.info("Bot is active and polling updates...")
     
-    # إطلاق حلقة الرصد الدوري في الخلفية
     monitor_task = asyncio.create_task(background_monitoring_task(app.bot))
     
     try:
